@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 
+from functools import reduce
 from itertools import islice
 from functools import partial
 from collections import Counter
@@ -87,13 +88,18 @@ def get_last_searched(hist:list)->str:
         return ''
 
 
-def get_search_cluster(s:str, df_clusters:pd.DataFrame,
+def get_search_cluster(s:str, domain_clusters:list,
                        embedder:SentenceTransformer)->int:
     s_embedding = embedder.encode([s])
     s_embedding = (s_embedding
                    /np.linalg.norm(s_embedding, axis=1, keepdims=True))
-    idx = np.argmax(cosine_similarity(list(df_clusters['embedding']), s_embedding))
-    return df_clusters.loc[idx, 'cluster']
+    cluster = np.argmax(cosine_similarity(domain_clusters, s_embedding))
+    return cluster
+
+
+def mean_embedding(l:list)->float:
+  all_embeddings = reduce(lambda x,y: np.vstack([x, np.asarray(y)]), l)
+  return list(all_embeddings.mean(axis=0))
 
 
 def process_user_dataset(filename:str, line_batch_limit:int,
@@ -132,11 +138,19 @@ def process_user_dataset(filename:str, line_batch_limit:int,
 
             # FEATURE
             # Last searched item
+            domain_clusters = list(df_clusters
+                                   [['cluster','embedding_cluster']]
+                                   .groupby(by='cluster')
+                                   .nth(-1)
+                                   .reset_index()
+                                   .sort_values(by='cluster')
+                                   ['embedding_cluster']
+                                   .values)
             get_search_cluster_ = partial(get_search_cluster,
-                                          df_clusters=df_clusters,
+                                          domain_clusters=domain_clusters,
                                           embedder=embedder)
             df['last_searched'] = df['user_history'].apply(get_last_searched)
-            # df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
+            df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
 
             df = df.astype({'last_viewed': 'int32',
                             'most_viewed': 'int32',
@@ -189,8 +203,20 @@ def process_item_dataset(filename:str,
                      embedding_mapper.get(corpus[sentence_idx]))
                       for (sentence_idx, cluster) in enumerate(cluster_assignment)]
 
-    df_clusters = pd.DataFrame(cluster_list, columns=['domain_id_preproc', 'cluster', 'embedding'])
     clusters_file_parquet = "../../data/interim/item_domain_clusters_data.parquet"
+    df_clusters = pd.DataFrame(cluster_list,
+                               columns=['domain_id_preproc',
+                                        'cluster', 'embedding_domain'])
+
+    df_clusters = (df_clusters.set_index('cluster')
+                   .join(df_clusters
+                         [['cluster','embedding_domain']]
+                         .groupby(by='cluster')
+                         .agg({'embedding_domain': mean_embedding})
+                         .rename(columns={'embedding_domain': 'embedding_cluster'}),
+                         how='left')
+                   .reset_index())
+
     df_clusters.to_parquet(clusters_file_parquet)
 
     return (item_file_parquet, clusters_file_parquet)
