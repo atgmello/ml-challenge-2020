@@ -191,7 +191,8 @@ def process_item_dataset(filename:str,
     df_item.to_parquet(item_file_parquet)
 
     # TODO: tune number of clusters
-    clustering_model = AgglomerativeClustering(n_clusters=20)
+    n_clusters = 50
+    clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
     #affinity='cosine',
     #linkage='average',
     #distance_threshold=0.8)
