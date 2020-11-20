@@ -61,13 +61,9 @@ def preproc_domain(s:str)->str:
     if not s:
         return 'other'
 
-    stopwords = ['electric', 'supplies', 'sets', 'covers', 'kits']
-    remove_domain_stopwords = partial(remove_stopwords, stopwords=stopwords)
-
     domain = s.split('-')[1]
     domain = ' '.join(domain.split('_'))
     domain = domain.lower()
-    domain = remove_domain_stopwords(domain)
     return domain
 
 
