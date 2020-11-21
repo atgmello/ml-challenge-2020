@@ -99,11 +99,19 @@ def mean_embedding(l:list)->float:
 
 
 def process_user_dataset(filename:str, line_batch_limit:int,
-                         item_filename:str, clusters_filename:str,
-                         embedder, logger)->str:
-    item_usecols = ['item_id', 'price', 'condition', 'domain_id_preproc']
-    df_item = pd.read_parquet(item_filename, columns=item_usecols)
-    df_clusters = pd.read_parquet(clusters_filename)
+                         embedder, logger,
+                         additional_filenames:dict)->str:
+
+    if (item_filename:=additional_filenames.get("parquet_item_filename")):
+        item_usecols = ['item_id', 'price', 'condition', 'domain_id_preproc']
+        df_item = pd.read_parquet(item_filename, columns=item_usecols)
+    else:
+        raise ValueError("parquet_item_filename is expected in additional_filenames")
+
+    if (clusters_filename:=additional_filenames.get("parquet_item_clusters_filename")):
+        df_clusters = pd.read_parquet(clusters_filename)
+    else:
+        df_clusters = None
 
     # Iteratively load train_dataset,
     # perform processing,
@@ -116,6 +124,7 @@ def process_user_dataset(filename:str, line_batch_limit:int,
         list_json = take(line_batch_limit, f)
         while len(list_json) > 0:
             df = pd.DataFrame(list_json, index=range(0, len(list_json)))
+
             # FEATURE
             # Most viewed item
             df_most_viewed = pd.DataFrame(list(df['user_history'].apply(get_most_viewed)),
@@ -134,24 +143,30 @@ def process_user_dataset(filename:str, line_batch_limit:int,
 
             # FEATURE
             # Last searched item
-            domain_clusters = list(df_clusters
-                                   [['cluster','embedding_cluster']]
-                                   .groupby(by='cluster')
-                                   .nth(-1)
-                                   .reset_index()
-                                   .sort_values(by='cluster')
-                                   ['embedding_cluster']
-                                   .values)
-            get_search_cluster_ = partial(get_search_cluster,
-                                          domain_clusters=domain_clusters,
-                                          embedder=embedder)
             df['last_searched'] = df['user_history'].apply(get_last_searched)
-            df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
 
+            # FEATURE
+            # Last searched item cluster
+            if df_clusters:
+                domain_clusters = list(df_clusters
+                                       [['cluster','embedding_cluster']]
+                                       .groupby(by='cluster')
+                                       .nth(-1)
+                                       .reset_index()
+                                       .sort_values(by='cluster')
+                                       ['embedding_cluster']
+                                       .values)
+                get_search_cluster_ = partial(get_search_cluster,
+                                              domain_clusters=domain_clusters,
+                                              embedder=embedder)
+                df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
+
+            # Saving results
             df = df.astype({'last_viewed': 'int32',
                             'most_viewed': 'int32',
                             'condition_last_viewed': 'category',
                             'condition_most_viewed': 'category'})
+
             parquet_file_name = ("../../data/interim/{}_dataset_{}.parquet"
                                  .format(filename.split('/')[-1].split('_')[0],
                                          parquet_counter))
@@ -160,21 +175,13 @@ def process_user_dataset(filename:str, line_batch_limit:int,
             list_json = take(line_batch_limit, f)
             parquet_counter += 1
 
-
     return parquet_file_name
 
 
-def process_item_dataset(filename:str,
-                         embedder:SentenceTransformer,
-                         logger)->tuple:
-
-    with jl.open(filename) as f:
-        df_item = pd.DataFrame(f)
-
-
-    # Create item clusters via word embeddings and agglomerative clustering
-    df_item['domain_id_preproc'] = df_item['domain_id'].apply(preproc_domain)
-    corpus = df_item['domain_id_preproc'].unique()
+def process_cluster_dataset(item_file:str, embedder)->str:
+    col = 'domain_id_preproc'
+    corpus = (pd.read_parquet(item_file, columns=[col])
+              [col].unique())
     corpus_embeddings = embedder.encode(corpus)
     corpus_embeddings = (corpus_embeddings
                          /np.linalg.norm(corpus_embeddings,
@@ -182,9 +189,6 @@ def process_item_dataset(filename:str,
     embedding_mapper = {x[0]: x[1]
                         for x in
                         zip(corpus, corpus_embeddings)}
-
-    item_file_parquet = "../../data/interim/item_data.parquet"
-    df_item.to_parquet(item_file_parquet)
 
     # TODO: tune number of clusters
     n_clusters = 50
@@ -216,33 +220,51 @@ def process_item_dataset(filename:str,
 
     df_clusters.to_parquet(clusters_file_parquet)
 
-    return (item_file_parquet, clusters_file_parquet)
+    return clusters_file_parquet
+
+
+def process_item_dataset(filename:str,
+                         embedder:SentenceTransformer,
+                         logger)->str:
+
+    with jl.open(filename) as f:
+        df_item = pd.DataFrame(f)
+
+    df_item['domain_id_preproc'] = df_item['domain_id'].apply(preproc_domain)
+
+    item_file_parquet = "../../data/interim/item_data.parquet"
+    df_item.to_parquet(item_file_parquet)
+
+    return item_file_parquet
 
 
 def main(args):
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logger = None
 
-    embedder = SentenceTransformer('xlm-r-distilroberta-base-paraphrase-v1')
+    embedder = SentenceTransformer('distilbert-multilingual-nli-stsb-quora-ranking')
 
     # ITEM DATA
     # Load item_data
-    item_file = "../../data/raw/item_data.jl.gz"
-    # item_filename, clusters_filename = process_item_dataset(item_file, embedder, logger)
-    item_filename, clusters_filename = ("../../data/interim/item_data.parquet",
-                                        "../../data/interim/item_domain_clusters_data.parquet")
+    raw_item_filename = "../../data/raw/item_data.jl.gz"
+    parquet_item_filename = process_item_dataset(raw_item_filename, embedder, logger)
+    # parquet_item_file = "../../data/interim/item_data.parquet"
+
+    # CLUSTERED ITEM DATA
+    # parquet_item_cluster_filename = process_cluster_dataset(parquet_item_filename, embedder)
 
     n_rows = 500_000
     # TRAIN DATA
-    train_file = "../../data/raw/train_dataset.jl.gz"
-    process_user_dataset(train_file, n_rows,
-                         item_filename, clusters_filename, embedder, logger)
+    raw_train_filename = "../../data/raw/train_dataset.jl.gz"
+    process_user_dataset(raw_train_filename, n_rows, embedder, logger,
+                         {"parquet_item_filename":
+                          parquet_item_filename})
 
     # TEST DATA
-    test_file = "../../data/raw/test_dataset.jl.gz"
-    process_user_dataset(test_file, n_rows,
-                         item_filename, clusters_filename, embedder, logger)
-
+    raw_test_filename = "../../data/raw/test_dataset.jl.gz"
+    process_user_dataset(raw_test_filename, n_rows, embedder, logger,
+                         {"parquet_item_filename":
+                          parquet_item_filename})
 
 if __name__ == '__main__':
     main({})
