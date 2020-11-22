@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 
+from os.path import exists
 from functools import reduce
 from itertools import islice
 from functools import partial
@@ -16,6 +17,29 @@ from sentence_transformers import SentenceTransformer
 def take(n, iterable):
     "Return first n items of the iterable as a list"
     return list(islice(iterable, n))
+
+
+def convert_raw_to_parquet(raw_filename:str,
+                           line_batch_limit:int=500_000)->str:
+    with jl.open(raw_filename) as f:
+        list_json = take(line_batch_limit, f)
+        df_raw = pd.DataFrame(list_json,
+                              index=range(0, len(list_json)))
+
+    parquet_filename = (raw_filename
+                        .replace('raw', 'interim')
+                        .replace('jl.gz','parquet'))
+
+    (df_raw.astype({'user_history': str}).to_parquet(parquet_filename)
+     if 'user_history' in df_raw.columns
+     else
+     df_raw.to_parquet(parquet_filename))
+
+    return parquet_filename
+
+
+def preproc_user_history(s:str)->list:
+    return json.loads(s.replace("'", '"'))
 
 
 def get_most_viewed(hist:list)->tuple:
@@ -113,67 +137,56 @@ def process_user_dataset(filename:str, line_batch_limit:int,
     else:
         df_clusters = None
 
-    # Iteratively load train_dataset,
-    # perform processing,
-    # save in parquet format
-    df = pd.DataFrame()
-    parquet_counter = 0
     missing_id = df_item['item_id'].max() + 1
 
-    with jl.open(filename) as f:
-        list_json = take(line_batch_limit, f)
-        while len(list_json) > 0:
-            df = pd.DataFrame(list_json, index=range(0, len(list_json)))
+    df = pd.DataFrame(list_json, index=range(0, len(list_json)))
+    df['user_history'] = df['user_history'].apply(preproc_user_history)
 
-            # FEATURE
-            # Most viewed item
-            df_most_viewed = pd.DataFrame(list(df['user_history'].apply(get_most_viewed)),
-                                          columns=['most_viewed', 'times_most_viewed'])
-            df = pd.concat([df, df_most_viewed], axis=1)
-            df['most_viewed'] = df['most_viewed'].fillna(missing_id)
-            col = 'most_viewed'
-            df = join_item_info(df, df_item, col)
+    # FEATURE
+    # Most viewed item
+    df_most_viewed = pd.DataFrame(list(df['user_history'].apply(get_most_viewed)),
+                                  columns=['most_viewed', 'times_most_viewed'])
+    df = pd.concat([df, df_most_viewed], axis=1)
+    df['most_viewed'] = df['most_viewed'].fillna(missing_id)
+    col = 'most_viewed'
+    df = join_item_info(df, df_item, col)
 
-            # FEATURE
-            # Last viewed item
-            df['last_viewed'] = df['user_history'].apply(get_last_viewed)
-            df['last_viewed'] = df['last_viewed'].fillna(missing_id)
-            col = 'last_viewed'
-            df = join_item_info(df, df_item, col)
+    # FEATURE
+    # Last viewed item
+    df['last_viewed'] = df['user_history'].apply(get_last_viewed)
+    df['last_viewed'] = df['last_viewed'].fillna(missing_id)
+    col = 'last_viewed'
+    df = join_item_info(df, df_item, col)
 
-            # FEATURE
-            # Last searched item
-            df['last_searched'] = df['user_history'].apply(get_last_searched)
+    # FEATURE
+    # Last searched item
+    df['last_searched'] = df['user_history'].apply(get_last_searched)
 
-            # FEATURE
-            # Last searched item cluster
-            if df_clusters:
-                domain_clusters = list(df_clusters
-                                       [['cluster','embedding_cluster']]
-                                       .groupby(by='cluster')
-                                       .nth(-1)
-                                       .reset_index()
-                                       .sort_values(by='cluster')
-                                       ['embedding_cluster']
-                                       .values)
-                get_search_cluster_ = partial(get_search_cluster,
-                                              domain_clusters=domain_clusters,
-                                              embedder=embedder)
-                df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
+    # FEATURE
+    # Last searched item cluster
+    if df_clusters:
+        domain_clusters = list(df_clusters
+                               [['cluster','embedding_cluster']]
+                               .groupby(by='cluster')
+                               .nth(-1)
+                               .reset_index()
+                               .sort_values(by='cluster')
+                               ['embedding_cluster']
+                               .values)
+        get_search_cluster_ = partial(get_search_cluster,
+                                      domain_clusters=domain_clusters,
+                                      embedder=embedder)
+        df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
 
-            # Saving results
-            df = df.astype({'last_viewed': 'int32',
-                            'most_viewed': 'int32',
-                            'condition_last_viewed': 'category',
-                            'condition_most_viewed': 'category'})
+    # Saving results
+    df = df.astype({'last_viewed': 'int32',
+                    'most_viewed': 'int32',
+                    'condition_last_viewed': 'category',
+                    'condition_most_viewed': 'category'})
 
-            parquet_file_name = ("../../data/interim/{}_dataset_{}.parquet"
-                                 .format(filename.split('/')[-1].split('_')[0],
-                                         parquet_counter))
-            df.drop(columns=['user_history']).to_parquet(parquet_file_name)
+    processed_filename = (filename.replace('.parquet', '_features.parquet'))
 
-            list_json = take(line_batch_limit, f)
-            parquet_counter += 1
+    df.drop(columns=['user_history']).to_parquet(processed_filename)
 
     return parquet_file_name
 
@@ -227,8 +240,7 @@ def process_item_dataset(filename:str,
                          embedder:SentenceTransformer,
                          logger)->str:
 
-    with jl.open(filename) as f:
-        df_item = pd.DataFrame(f)
+    df_item = pd.read_parquet(filename)
 
     df_item['domain_id_preproc'] = df_item['domain_id'].apply(preproc_domain)
 
@@ -246,23 +258,35 @@ def main(args):
 
     # ITEM DATA
     # Load item_data
-    raw_item_filename = "../../data/raw/item_data.jl.gz"
-    parquet_item_filename = process_item_dataset(raw_item_filename, embedder, logger)
+
+    parquet_item_filename = "../../data/interim/item_data.parquet"
+    if not exists(parquet_item_filename):
+        raw_item_filename = "../../data/raw/item_data.jl.gz"
+        convert_raw_to_parquet(raw_item_filename)
+
+    process_item_dataset(parquet_item_filename, embedder, logger)
     # parquet_item_file = "../../data/interim/item_data.parquet"
 
     # CLUSTERED ITEM DATA
     # parquet_item_cluster_filename = process_cluster_dataset(parquet_item_filename, embedder)
 
-    n_rows = 500_000
     # TRAIN DATA
-    raw_train_filename = "../../data/raw/train_dataset.jl.gz"
-    process_user_dataset(raw_train_filename, n_rows, embedder, logger,
+    parquet_train_filename = "../../data/interim/train_dataset.parquet"
+    if not exists(parquet_train_filename):
+        raw_train_filename = "../../data/raw/train_dataset.jl.gz"
+        convert_raw_to_parquet(raw_train_filename)
+
+    process_user_dataset(parquet_train_filename, n_rows, embedder, logger,
                          {"parquet_item_filename":
                           parquet_item_filename})
 
     # TEST DATA
-    raw_test_filename = "../../data/raw/test_dataset.jl.gz"
-    process_user_dataset(raw_test_filename, n_rows, embedder, logger,
+    parquet_test_filename = "../../data/interim/test_dataset.parquet"
+    if not exists(parquet_test_filename):
+        raw_test_filename = "../../data/raw/test_dataset.jl.gz"
+        convert_raw_to_parquet(raw_test_filename)
+
+    process_user_dataset(parquet_test_filename, n_rows, embedder, logger,
                          {"parquet_item_filename":
                           parquet_item_filename})
 
