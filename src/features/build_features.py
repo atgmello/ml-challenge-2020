@@ -159,16 +159,24 @@ def process_user_dataset(filename:str,
                          embedder, logger,
                          additional_filenames:dict)->str:
 
-    if (item_filename:=additional_filenames.get("parquet_item_filename")):
-        item_usecols = ['item_id', 'price', 'condition', 'domain_id_preproc']
+    if additional_filenames.get("parquet_item_filename"):
+        item_filename = additional_filenames.get("parquet_item_filename")
+        item_usecols = ['item_id', 'price', 'condition', 'domain_id']
         df_item = pd.read_parquet(item_filename, columns=item_usecols)
     else:
         raise ValueError("parquet_item_filename is expected in additional_filenames")
 
-    if (clusters_filename:=additional_filenames.get("parquet_item_clusters_filename")):
+    if additional_filenames.get("parquet_item_clusters_filename"):
+        clusters_filename = additional_filenames.get("parquet_item_clusters_filename")
         df_clusters = pd.read_parquet(clusters_filename)
     else:
         df_clusters = None
+
+    if additional_filenames.get("parquet_domain_filename"):
+        domain_filename = additional_filenames.get("parquet_domain_filename")
+        df_domain = pd.read_parquet(domain_filename)
+    else:
+        df_domain = None
 
     missing_id = df_item['item_id'].max() + 1
 
