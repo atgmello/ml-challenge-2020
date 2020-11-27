@@ -19,10 +19,9 @@ def take(n, iterable):
     return list(islice(iterable, n))
 
 
-def convert_raw_to_parquet(raw_filename:str,
-                           line_batch_limit:int=500_000)->str:
+def convert_raw_to_parquet(raw_filename:str)->str:
     with jl.open(raw_filename) as f:
-        list_json = take(line_batch_limit, f)
+        list_json = [row for row in f]
         df_raw = pd.DataFrame(list_json,
                               index=range(0, len(list_json)))
 
