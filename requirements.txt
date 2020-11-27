@@ -42,6 +42,7 @@ jupyterlab==2.2.9
 jupyterlab-server==1.2.0
 jupytext==1.7.0
 kiwisolver==1.1.0
+lightgbm==3.1.0
 llvmlite==0.34.0
 markdown-it-py==0.5.6
 MarkupSafe==1.1.1
