@@ -83,6 +83,32 @@ def get_last_viewed(hist:list)->int:
         return None
 
 
+def get_most_searched_ngram(hist:list, n:int=2, m:int=2)->list:
+    """
+    n: number of grams (bigram, trigram, ngram)
+    m: number of most common
+    """
+    searched_items = reduce(lambda x, y:
+                            x + [preproc_search(y['event_info'])] if y['event_type']=='search'
+                            else x,
+                            hist, [])
+    searched_ngram = reduce(lambda x, y:
+                           x + list(token_sliding_window(y, n)),
+                           searched_items, [])
+    sorted_cycle = (sorted(take(m, cycle(Counter(searched_ngram)
+                                      .most_common(m))),
+                           key=lambda x: x[1],
+                           reverse=True))
+    common_ngrams_counts = [item
+                            for tup in sorted_cycle
+                            for item in tup]
+    missing = 2*m - len(common_ngrams_counts)
+    if len(common_ngrams_counts) > 0:
+        common_ngrams_counts.extend(take(missing, cycle(common_ngrams_counts)))
+    else:
+        common_ngrams_counts.extend(take(missing, cycle(['None', 0])))
+
+    return common_ngrams_counts
 
 
 def join_item_info(df:pd.DataFrame, df_item:pd.DataFrame, col:str)->pd.DataFrame:
