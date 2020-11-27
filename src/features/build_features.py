@@ -83,20 +83,20 @@ def get_last_viewed(hist:list)->int:
         return None
 
 
+
+
 def join_item_info(df:pd.DataFrame, df_item:pd.DataFrame, col:str)->pd.DataFrame:
-    df = (df
-          .set_index(col)
-          .join(df_item
-                .add_suffix('_{}'.format(col))
-                .set_index('item_id_{}'.format(col)), how='left')
-          .reset_index()
-          .rename(columns={'index': col}))
-    return df
+    return (df
+            .set_index(col)
+            .join(df_item
+                  .add_suffix('_{}'.format(col))
+                  .set_index('item_id_{}'.format(col)), how='left')
+            .reset_index()
+            .rename(columns={'index': col}))
 
 
 def remove_stopwords(s:str, stopwords:list)->str:
-    domain = filter(lambda w: w not in stopwords, s.split(' '))
-    return ' '.join(domain)
+    return ' '.join(filter(lambda w: w not in stopwords, s.split(' ')))
 
 
 def preproc_domain(s:str)->str:
