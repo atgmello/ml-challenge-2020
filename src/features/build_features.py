@@ -38,16 +38,29 @@ def convert_raw_to_parquet(raw_filename:str)->str:
 
 
 def preproc_user_history(s:str)->list:
-    return json.loads(s.replace("'", '"'))
-
-
-def get_most_viewed(hist:list)->tuple:
-    item_list = []
-    for item in hist:
-        if item['event_type']=='view':
-            item_list.append(item['event_info'])
+    res = []
     try:
-        return Counter(item_list).most_common(1)[0]
+      res = json.loads(s.replace("'", '"'))
+    except:
+      res = [{'event_info':
+                '100 WATERPROOF PROFISSIONAL AUDIO BLUETOOTH HEADSET EQUIPPED',
+              'event_timestamp': '2019-10-01T16:58:42.553-0400',
+              'event_type': 'search'}]
+    return res
+
+
+def get_most_viewed(hist:list, n:int=2)->tuple:
+    filtered_hist = filter(lambda x: x['event_type']=='view', hist)
+    item_list = list(reduce(lambda x, y:
+                            x + [y['event_info']],
+                            filtered_hist,
+                            []))
+    try:
+        most_common = Counter(item_list).most_common(n)
+        res = [item for tup in most_common for item in tup]
+        while len(res) < 2*n:
+            res.extend([None, 0])
+        return res
     except IndexError as e:
         return (None, 0)
 
