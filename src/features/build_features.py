@@ -135,7 +135,21 @@ def mean_embedding(l:list)->float:
   return list(all_embeddings.mean(axis=0))
 
 
-def process_user_dataset(filename:str, line_batch_limit:int,
+def generate_top_title(s:str, stopwords:list, n:int=20)->str:
+    counter = Counter([w for w in nltk.word_tokenize(s.lower())
+                      if w not in stopwords
+                      and not re.search('\d', w)
+                      and len(w) > 2]).most_common(n)
+    title = ' '.join([w[0] for w in counter])
+    return title
+
+
+def get_domain_id(item:int, df_item:pd.DataFrame)->str:
+    domain_id = df_item[df_item['item_id']==item]['domain_id'].values
+    return domain_id[0] if len(domain_id) > 0 else None
+
+
+def process_user_dataset(filename:str,
                          embedder, logger,
                          additional_filenames:dict)->str:
 
@@ -261,6 +275,50 @@ def process_item_dataset(filename:str,
     df_item.to_parquet(item_file_parquet)
 
     return item_file_parquet
+
+
+def join_domain_title(row:list)->str:
+    return (' '.join(' '.join(row['domain_id']
+                              .lower()
+                              .split('-')[1:])
+                     .split('_'))
+            + ' '
+            + row['title'])
+
+
+def generate_domain_data(filename:str,
+                         embedder:SentenceTransformer,
+                         path:str,
+                         logger)->str:
+    df_item = pd.read_parquet(filename)
+
+    custom_stopwords = ['kit', '', '+', '-', 'und', 'unidade', 'unidad']
+    stopwords = (nltk.corpus.stopwords.words('portuguese')
+                 + nltk.corpus.stopwords.words('spanish')
+                 + custom_stopwords)
+
+    generate_top_title_ = partial(generate_top_title,
+                                  stopwords=stopwords)
+    df_domain = pd.DataFrame(df_item[['domain_id', 'title']]
+                             .groupby(by='domain_id')
+                             .agg(' '.join)
+                             ['title']
+                             .swifter
+                             .apply(generate_top_title_)).reset_index()
+
+    df_domain['title'] = (df_domain
+                          [['domain_id','title']]
+                          .swifter
+                          .apply(join_domain_title, axis=1)
+                          .values)
+
+    df_domain['embedding_title'] = list(embedder.encode(list(df_domain['title'])))
+    df_domain['domain_code'] = list(range(len(df_domain)))
+
+    domain_file_parquet = path + "/data/interim/domain_data.parquet"
+    df_domain.to_parquet(domain_file_parquet)
+
+    return domain_file_parquet
 
 
 def main(args):
