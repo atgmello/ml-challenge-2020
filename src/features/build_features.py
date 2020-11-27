@@ -104,8 +104,9 @@ def preproc_domain(s:str)->str:
 
 
 def preproc_search(s:str)->str:
-    # TODO: improve search preprocessing
-    return s.lower()
+    return ' '.join([w for w in nltk.word_tokenize(s.lower())
+                     if not re.search('\d', w)
+                     and len(w) > 2])
 
 
 def get_last_searched(hist:list)->str:
