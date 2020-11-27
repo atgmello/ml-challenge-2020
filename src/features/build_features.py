@@ -150,7 +150,7 @@ def get_last_searched(hist:list)->str:
     if item['event_type'] == 'search':
         return preproc_search(item['event_info'])
     else:
-        return ''
+        return None
 
 
 def get_search_cluster(s:str, domain_clusters:list,
