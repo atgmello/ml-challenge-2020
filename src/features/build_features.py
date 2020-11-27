@@ -206,11 +206,6 @@ def process_user_dataset(filename:str,
         df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
 
     # Saving results
-    df = df.astype({'last_viewed': 'int32',
-                    'most_viewed': 'int32',
-                    'condition_last_viewed': 'category',
-                    'condition_most_viewed': 'category'})
-
     processed_filename = (filename.replace('.parquet', '_features.parquet'))
 
     df.drop(columns=['user_history']).to_parquet(processed_filename)
