@@ -19,6 +19,12 @@ def take(n, iterable):
     return list(islice(iterable, n))
 
 
+def token_sliding_window(s:str, size:int):
+    tokens = s.split(' ')
+    for i in range(len(tokens) - size + 1):
+        yield ' '.join(tokens[i:i+size])
+
+
 def convert_raw_to_parquet(raw_filename:str)->str:
     with jl.open(raw_filename) as f:
         list_json = [row for row in f]
