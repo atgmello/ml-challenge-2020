@@ -206,28 +206,125 @@ def process_user_dataset(filename:str,
 
     missing_id = df_item['item_id'].max() + 1
 
-    df = pd.DataFrame(list_json, index=range(0, len(list_json)))
-    df['user_history'] = df['user_history'].apply(preproc_user_history)
+    print("Reading data...")
+    df = pd.read_parquet(filename)
+    print("Proprocessing user_history...")
+    df['user_history'] = df['user_history'].swifter.apply(preproc_user_history)
 
+    start = time.time()
+
+    # FEATURE
+    # Get the domain_id for the bought_item
+    # It can be used as a new target
+    if 'item_bought' in df.columns:
+        print("Feature\nBought item domain_id...")
+        df = (df.set_index('item_bought')
+              .join(df_item[['item_id','domain_id']]
+                    .set_index('item_id'),
+                    how='left')
+              .rename_axis('item_bought')
+              .reset_index()
+              .rename(columns={'domain_id': 'domain_id_item_bought'}))
+
+    print("Feature\nMost viewed item...")
     # FEATURE
     # Most viewed item
-    df_most_viewed = pd.DataFrame(list(df['user_history'].apply(get_most_viewed)),
-                                  columns=['most_viewed', 'times_most_viewed'])
-    df = pd.concat([df, df_most_viewed], axis=1)
-    df['most_viewed'] = df['most_viewed'].fillna(missing_id)
-    col = 'most_viewed'
-    df = join_item_info(df, df_item, col)
+    n_most = 2
+    cols_feat = [c for n in range(1, n_most+1)
+                 for c in
+                 [f'most_viewed_{n}',
+                  f'most_viewed_count_{n}']]
+    df[cols_feat] = list(df['user_history'].swifter.apply(get_most_viewed))
 
+    for i in range(1, n_most+1):
+        # Join to get more information about the viewed item
+        df = join_item_info(df, df_item, f'most_viewed_{i}')
+
+        # Fills NaN with the last most viewed item
+        if i > 1:
+          df[f'most_viewed_{i}'] = (df[f'most_viewed_{i}']
+                                    .fillna(df[f'most_viewed_{i-1}']))
+
+    print("Feature\nLast viewed item...")
     # FEATURE
     # Last viewed item
-    df['last_viewed'] = df['user_history'].apply(get_last_viewed)
-    df['last_viewed'] = df['last_viewed'].fillna(missing_id)
+    df['last_viewed'] = df['user_history'].swifter.apply(get_last_viewed)
+
     col = 'last_viewed'
     df = join_item_info(df, df_item, col)
 
+    print("Feature\nLast searched item...")
     # FEATURE
     # Last searched item
-    df['last_searched'] = df['user_history'].apply(get_last_searched)
+    idx_missing = df['last_viewed'].isna().values
+    df['last_searched'] = None
+    df.loc[idx_missing,'last_searched'] = (df.loc[idx_missing, 'user_history']
+                                            .swifter.apply(get_last_searched))
+    idx_missing = idx_missing & ~df['last_searched'].isna().values
+
+    df['last_searched_embedding'] = None
+    df.loc[idx_missing,'last_searched_embedding'] = [[x]
+                                                     for x in
+                                                     (embedder
+                                                      .encode(list(df.loc[idx_missing,
+                                                                          'last_searched'])))]
+
+    print("Feature\nLast searched item domain...")
+    # FEATURE
+    # Last searched item domain
+    print("Building index...")
+    data = np.array([np.array(x) for x in df_domain['embedding_title'].values])
+    index = NNDescent(data, metric='cosine')
+    print("Querying data...")
+    query_data = np.array([np.array(x[0])
+                           for x in
+                           df.loc[idx_missing,
+                                  'last_searched_embedding'].values])
+    closest_domain = index.query(query_data, k=1)
+    df['last_searched_domain'] = None
+    df.loc[idx_missing,'last_searched_domain'] = [df_domain.loc[idx[0],'domain_id']
+                                                  for idx in closest_domain[0]]
+    df['last_searched_domain_distance'] = None
+    df.loc[idx_missing,'last_searched_domain_distance'] = [dist[0]
+                                                           for dist in
+                                                           closest_domain[1]]
+
+    print("Feature\nMost searched ngrams...")
+    # FEATURE
+    # Most searched ngrams
+    n_most = 2
+    cols_feat = [c for n in range(1, n_most+1)
+                 for c in
+                 [f'most_searched_ngram_{n}',
+                  f'most_searched_ngram_count_{n}']]
+    df[cols_feat] = None
+    get_most_searched_ngram_ = partial(get_most_searched_ngram, m=n_most)
+    df.loc[idx_missing, cols_feat] = list(df.loc[idx_missing,'user_history']
+                                                  .swifter.apply(get_most_searched_ngram_))
+
+    cols_search = [f'most_searched_ngram_{n}' for n in range(1, n_most+1)]
+    for c in cols_search:
+        df[f'{c}_embedding'] = None
+        df.loc[idx_missing,f'{c}_embedding'] = [[x]
+                                                for x in
+                                                (embedder.
+                                                 encode(list(df.loc[idx_missing,c])))]
+
+    print("Feature\nMost searched ngrams domains...")
+    # FEATURE
+    # Most searched ngrams domain
+    for c in cols_search:
+        df[f'{c}_domain'] = None
+        df[f'{c}_domain_distance'] = None
+        query_data = np.array([np.array(x[0])
+                               for x in
+                               df.loc[idx_missing,f'{c}_embedding'].values])
+        closest_domain = index.query(query_data, k=1)
+        df.loc[idx_missing,f'{c}_domain'] = [df_domain.loc[idx[0],'domain_id']
+                                             for idx in closest_domain[0]]
+        df.loc[idx_missing,f'{c}_domain_distance'] = [dist[0]
+                                                      for dist in
+                                                      closest_domain[1]]
 
     # FEATURE
     # Last searched item cluster
@@ -243,14 +340,15 @@ def process_user_dataset(filename:str,
         get_search_cluster_ = partial(get_search_cluster,
                                       domain_clusters=domain_clusters,
                                       embedder=embedder)
-        df['last_searched_cluster'] = df['last_searched'].apply(get_search_cluster_)
+        df['last_searched_cluster'] = df['last_searched'].swifter.apply(get_search_cluster_)
 
     # Saving results
     processed_filename = (filename.replace('.parquet', '_features.parquet'))
 
+    print(time.time() - start)
     df.drop(columns=['user_history']).to_parquet(processed_filename)
 
-    return parquet_file_name
+    return processed_filename
 
 
 def process_cluster_dataset(item_file:str, embedder, path:str)->str:
