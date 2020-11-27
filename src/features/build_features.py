@@ -219,7 +219,7 @@ def process_user_dataset(filename:str,
     return parquet_file_name
 
 
-def process_cluster_dataset(item_file:str, embedder)->str:
+def process_cluster_dataset(item_file:str, embedder, path:str)->str:
     col = 'domain_id_preproc'
     corpus = (pd.read_parquet(item_file, columns=[col])
               [col].unique())
@@ -245,7 +245,7 @@ def process_cluster_dataset(item_file:str, embedder)->str:
                      embedding_mapper.get(corpus[sentence_idx]))
                       for (sentence_idx, cluster) in enumerate(cluster_assignment)]
 
-    clusters_file_parquet = "../../data/interim/item_domain_clusters_data.parquet"
+    clusters_file_parquet = path + "/data/interim/item_domain_clusters_data.parquet"
     df_clusters = pd.DataFrame(cluster_list,
                                columns=['domain_id_preproc',
                                         'cluster', 'embedding_domain'])
@@ -266,13 +266,13 @@ def process_cluster_dataset(item_file:str, embedder)->str:
 
 def process_item_dataset(filename:str,
                          embedder:SentenceTransformer,
+                         path:str,
                          logger)->str:
-
     df_item = pd.read_parquet(filename)
 
     df_item['domain_id_preproc'] = df_item['domain_id'].apply(preproc_domain)
 
-    item_file_parquet = "../../data/interim/item_data.parquet"
+    item_file_parquet = path + "/data/interim/item_data.parquet"
     df_item.to_parquet(item_file_parquet)
 
     return item_file_parquet
@@ -326,41 +326,79 @@ def main(args):
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logger = None
 
-    embedder = SentenceTransformer('distilbert-multilingual-nli-stsb-quora-ranking')
+    nltk.download('stopwords')
+    nltk.download('punkt')
+
+    if args.embedder=='bert':
+        embedder = SentenceTransformer('distilbert-multilingual-nli-stsb-quora-ranking')
+    else:
+        embedder = SentenceTransformer('xlm-r-distilroberta-base-paraphrase-v1')
+
+    if args.environment=='colab':
+        path = './drive/MyDrive/ml-data-challange-2020'
+    else:
+        path = '../../'
 
     # ITEM DATA
     # Load item_data
-
-    parquet_item_filename = "../../data/interim/item_data.parquet"
+    parquet_item_filename = path + "/data/interim/item_data.parquet"
     if not exists(parquet_item_filename):
-        raw_item_filename = "../../data/raw/item_data.jl.gz"
+        raw_item_filename = path + "/data/raw/item_data.jl.gz"
         convert_raw_to_parquet(raw_item_filename)
 
-    process_item_dataset(parquet_item_filename, embedder, logger)
+    process_item_dataset(parquet_item_filename, embedder, path, logger)
     # parquet_item_file = "../../data/interim/item_data.parquet"
 
     # CLUSTERED ITEM DATA
-    # parquet_item_cluster_filename = process_cluster_dataset(parquet_item_filename, embedder)
+    # parquet_item_cluster_filename = process_cluster_dataset(parquet_item_filename,
+    #                                                         embedder, path)
 
-    # TRAIN DATA
-    parquet_train_filename = "../../data/interim/train_dataset.parquet"
-    if not exists(parquet_train_filename):
-        raw_train_filename = "../../data/raw/train_dataset.jl.gz"
-        convert_raw_to_parquet(raw_train_filename)
-
-    process_user_dataset(parquet_train_filename, n_rows, embedder, logger,
-                         {"parquet_item_filename":
-                          parquet_item_filename})
+    # DOMAIN ITEM DATA
+    parquet_domain_filename = path + "/data/interim/domain_data.parquet"
+    if not exists(parquet_domain_filename):
+        generate_domain_data(parquet_item_filename, embedder, path, logger)
 
     # TEST DATA
-    parquet_test_filename = "../../data/interim/test_dataset.parquet"
+    parquet_test_filename = path + "/data/interim/test_dataset.parquet"
     if not exists(parquet_test_filename):
-        raw_test_filename = "../../data/raw/test_dataset.jl.gz"
+        raw_test_filename = path + "/data/raw/test_dataset.jl.gz"
         convert_raw_to_parquet(raw_test_filename)
 
-    process_user_dataset(parquet_test_filename, n_rows, embedder, logger,
+    process_user_dataset(parquet_test_filename, embedder, logger,
                          {"parquet_item_filename":
-                          parquet_item_filename})
+                          parquet_item_filename,
+                          "parquet_domain_filename":
+                          parquet_domain_filename})
+
+    # TRAIN DATA
+    parquet_train_filename = path + "/data/interim/train_dataset.parquet"
+    if not exists(parquet_train_filename):
+        raw_train_filename = path + "/data/raw/train_dataset.jl.gz"
+        convert_raw_to_parquet(raw_train_filename)
+
+    process_user_dataset(parquet_train_filename, embedder, logger,
+                         {"parquet_item_filename":
+                          parquet_item_filename,
+                          "parquet_domain_filename":
+                          parquet_domain_filename})
+
 
 if __name__ == '__main__':
-    main({})
+    import argparse
+    parser = argparse.ArgumentParser()
+    env_msg = """
+    Sets the environment where the code is going to run. Accepts 'local' or 'colab'.
+    """
+    parser.add_argument("--environment", help=env_msg,
+                        choices = ['local', 'colab'],
+                        default='colab')
+
+    embedder_msg = """
+    Pre-trained model to be used. Either 'bert' or 'roberta'
+    """
+    parser.add_argument("--embedder", help=embedder_msg,
+                        choices = ['bert', 'roberta'],
+                        default = 'bert')
+
+    args = parser.parse_args()
+    main(args)
