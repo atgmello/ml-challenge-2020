@@ -304,7 +304,10 @@ def process_item_dataset(filename:str,
                          logger)->str:
     df_item = pd.read_parquet(filename)
 
-    df_item['domain_id_preproc'] = df_item['domain_id'].apply(preproc_domain)
+    domain_mapper = {x[1]: x[0]
+                     for x in
+                     enumerate(sorted(df_item['domain_id'].dropna().unique()))}
+    df_item['domain_code'] = df_item['domain_id'].map(domain_mapper)
 
     item_file_parquet = path + "/data/interim/item_data.parquet"
     df_item.to_parquet(item_file_parquet)
