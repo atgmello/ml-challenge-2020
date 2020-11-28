@@ -210,12 +210,11 @@ def process_user_dataset(filename:str,
     else:
         df_domain = None
 
-    missing_id = df_item['item_id'].max() + 1
-
     print("Reading data...")
     df = pd.read_parquet(filename)
     print("Proprocessing user_history...")
     df['user_history'] = df['user_history'].swifter.apply(preproc_user_history)
+    df = df.rename_axis('user_id').reset_index()
 
     start = time.time()
 
