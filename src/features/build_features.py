@@ -171,7 +171,7 @@ def mean_embedding(l:list)->float:
   return list(all_embeddings.mean(axis=0))
 
 
-def generate_top_title(s:str, stopwords:list, n:int=20)->str:
+def generate_top_title(s:str, stopwords:list, n:int=10)->str:
     counter = Counter([w for w in nltk.word_tokenize(s.lower())
                       if w not in stopwords
                       and not re.search('\d', w)
