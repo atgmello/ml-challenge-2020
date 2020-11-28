@@ -98,20 +98,23 @@ def get_most_searched_ngram(hist:list, n:int=2, m:int=2)->list:
                             else x,
                             hist, [])
     searched_ngram = reduce(lambda x, y:
-                           x + list(token_sliding_window(y, n)),
-                           searched_items, [])
+                            x + list(token_sliding_window(y, n)),
+                            searched_items, [])
     sorted_cycle = (sorted(take(m, cycle(Counter(searched_ngram)
-                                      .most_common(m))),
+                                         .most_common(m))),
                            key=lambda x: x[1],
                            reverse=True))
     common_ngrams_counts = [item
                             for tup in sorted_cycle
                             for item in tup]
-    missing = 2*m - len(common_ngrams_counts)
+
+    num_missing = 2*m - len(common_ngrams_counts)
     if len(common_ngrams_counts) > 0:
-        common_ngrams_counts.extend(take(missing, cycle(common_ngrams_counts)))
+        common_ngrams_counts.extend(take(num_missing,
+                                         cycle(common_ngrams_counts)))
     else:
-        common_ngrams_counts.extend(take(missing, cycle(['None', 0])))
+        common_ngrams_counts.extend(take(num_missing,
+                                         cycle(['None', 0])))
 
     return common_ngrams_counts
 
@@ -211,7 +214,7 @@ def process_user_dataset(filename:str,
 
     print("Reading data...")
     df = pd.read_parquet(filename)
-    print("Proprocessing user_history...")
+    print("Preprocessing user_history...")
     df['user_history'] = df['user_history'].swifter.apply(preproc_user_history)
     df = df.rename_axis('user_id').reset_index()
 
@@ -252,10 +255,10 @@ def process_user_dataset(filename:str,
     print("Feature\nLast viewed item...")
     # FEATURE
     # Last viewed item
-    n_last = 2
     get_last_viewed_ = partial(get_last_viewed, n=n_last)
-    cols_feat_last_viewed = [f'last_viewed_{i}' for i in range(1, n_last+1)]
     df[cols_feat_last_viewed] = list(df['user_history'].swifter.apply(get_last_viewed_))
+    n_last_viewed = 2
+    cols_feat_last_viewed = [f'last_viewed_{i}' for i in range(1, n_last_viewed+1)]
 
     for c in cols_feat_last_viewed:
         df = join_item_info(df, df_item, c)
@@ -321,17 +324,17 @@ def process_user_dataset(filename:str,
     # FEATURE
     # Most searched ngrams domain
     for c in cols_search:
-        df[f'{c}_domain'] = None
-        df[f'{c}_domain_distance'] = None
+        df[f'domain_id_{c}'] = None
+        df[f'domain_id_{c}_distance'] = None
         query_data = np.array([np.array(x[0])
                                for x in
                                df.loc[idx_missing,f'{c}_embedding'].values])
         closest_domain = index.query(query_data, k=1)
-        df.loc[idx_missing,f'{c}_domain'] = [df_domain.loc[idx[0],'domain_id']
-                                             for idx in closest_domain[0]]
-        df.loc[idx_missing,f'{c}_domain_distance'] = [dist[0]
-                                                      for dist in
-                                                      closest_domain[1]]
+        df.loc[idx_missing,f'domain_id_{c}'] = [df_domain.loc[idx[0],'domain_id']
+                                                for idx in closest_domain[0]]
+        df.loc[idx_missing,f'domain_id_{c}_distance'] = [dist[0]
+                                                         for dist in
+                                                         closest_domain[1]]
 
     # FEATURE
     # Last searched item cluster
