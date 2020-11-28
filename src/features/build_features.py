@@ -77,16 +77,15 @@ def get_most_viewed(hist:list, n:int=2)->tuple:
         return (None, 0)
 
 
-def get_last_viewed(hist:list)->int:
+def get_last_viewed(hist:list, n:int=2)->int:
     idx_hist = len(hist) - 1
-    item = {'event_type': 'null'}
-    while item['event_type'] != 'view' and idx_hist >= 0:
-        item = hist[idx_hist]
-        idx_hist -= 1
-    if item['event_type'] == 'view':
-        return item['event_info']
-    else:
-        return None
+    item_list = reversed(list(filter(lambda x:
+                                     x.get("event_type")=="view",
+                                     hist)))
+    last_n = [x['event_info'] for x in take(n, item_list)]
+    num_missing = n - len(last_n)
+    last_n.extend(take(num_missing, cycle([None])))
+    return last_n
 
 
 def get_most_searched_ngram(hist:list, n:int=2, m:int=2)->list:
@@ -235,11 +234,11 @@ def process_user_dataset(filename:str,
     # FEATURE
     # Most viewed item
     n_most = 2
-    cols_feat = [c for n in range(1, n_most+1)
-                 for c in
-                 [f'most_viewed_{n}',
-                  f'most_viewed_count_{n}']]
-    df[cols_feat] = list(df['user_history'].swifter.apply(get_most_viewed))
+    cols_feat_most_viewed = [c for n in range(1, n_most+1)
+                             for c in
+                             [f'most_viewed_{n}',
+                              f'most_viewed_count_{n}']]
+    df[cols_feat_most_viewed] = list(df['user_history'].swifter.apply(get_most_viewed))
 
     for i in range(1, n_most+1):
         # Join to get more information about the viewed item
@@ -253,15 +252,18 @@ def process_user_dataset(filename:str,
     print("Feature\nLast viewed item...")
     # FEATURE
     # Last viewed item
-    df['last_viewed'] = df['user_history'].swifter.apply(get_last_viewed)
+    n_last = 2
+    get_last_viewed_ = partial(get_last_viewed, n=n_last)
+    cols_feat_last_viewed = [f'last_viewed_{i}' for i in range(1, n_last+1)]
+    df[cols_feat_last_viewed] = list(df['user_history'].swifter.apply(get_last_viewed_))
 
-    col = 'last_viewed'
-    df = join_item_info(df, df_item, col)
+    for c in cols_feat_last_viewed:
+        df = join_item_info(df, df_item, c)
 
     print("Feature\nLast searched item...")
     # FEATURE
     # Last searched item
-    idx_missing = df['last_viewed'].isna().values
+    idx_missing = df[cols_feat_last_viewed[0]].isna().values
     df['last_searched'] = None
     df.loc[idx_missing,'last_searched'] = (df.loc[idx_missing, 'user_history']
                                             .swifter.apply(get_last_searched))
@@ -298,14 +300,14 @@ def process_user_dataset(filename:str,
     # FEATURE
     # Most searched ngrams
     n_most = 2
-    cols_feat = [c for n in range(1, n_most+1)
-                 for c in
-                 [f'most_searched_ngram_{n}',
-                  f'most_searched_ngram_count_{n}']]
-    df[cols_feat] = None
+    cols_feat_most_searched = [c for n in range(1, n_most+1)
+                               for c in
+                               [f'most_searched_ngram_{n}',
+                                f'most_searched_ngram_count_{n}']]
+    df[cols_feat_most_searched] = None
     get_most_searched_ngram_ = partial(get_most_searched_ngram, m=n_most)
-    df.loc[idx_missing, cols_feat] = list(df.loc[idx_missing,'user_history']
-                                                  .swifter.apply(get_most_searched_ngram_))
+    df.loc[idx_missing, cols_feat_most_searched] = list(df.loc[idx_missing,'user_history']
+                                                        .swifter.apply(get_most_searched_ngram_))
 
     cols_search = [f'most_searched_ngram_{n}' for n in range(1, n_most+1)]
     for c in cols_search:
