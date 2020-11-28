@@ -7,8 +7,8 @@ import time
 import json
 import nltk
 import re
+import os
 
-from os.path import exists
 from functools import reduce
 from itertools import islice, cycle
 from functools import partial
@@ -406,7 +406,7 @@ def process_cluster_dataset(item_file:str, embedder, path:str)->str:
                      embedding_mapper.get(corpus[sentence_idx]))
                       for (sentence_idx, cluster) in enumerate(cluster_assignment)]
 
-    clusters_file_parquet = path + "/data/interim/item_domain_clusters_data.parquet"
+    clusters_file_parquet = os.path.join(path, "data/interim/item_domain_clusters_data.parquet")
     df_clusters = pd.DataFrame(cluster_list,
                                columns=['domain_id_preproc',
                                         'cluster', 'embedding_domain'])
@@ -436,7 +436,7 @@ def process_item_dataset(filename:str,
                      enumerate(sorted(df_item['domain_id'].dropna().unique()))}
     df_item['domain_code'] = df_item['domain_id'].map(domain_mapper)
 
-    item_file_parquet = path + "/data/interim/item_data.parquet"
+    item_file_parquet = os.path.join(path, "data/interim/item_data.parquet")
     df_item.to_parquet(item_file_parquet)
 
     return item_file_parquet
@@ -480,7 +480,7 @@ def generate_domain_data(filename:str,
     df_domain['embedding_title'] = list(embedder.encode(list(df_domain['title'])))
     df_domain['domain_code'] = list(range(len(df_domain)))
 
-    domain_file_parquet = path + "/data/interim/domain_data.parquet"
+    domain_file_parquet = os.path.join(path, "data/interim/domain_data.parquet")
     df_domain.to_parquet(domain_file_parquet)
 
     return domain_file_parquet
@@ -499,15 +499,15 @@ def main(args):
         embedder = SentenceTransformer('xlm-r-distilroberta-base-paraphrase-v1')
 
     if args.environment=='colab':
-        path = './drive/MyDrive/ml-data-challange-2020'
+        path = './drive/MyDrive/ml-data-challange-2020/'
     else:
         path = '../../'
 
     # ITEM DATA
     # Load item_data
-    parquet_item_filename = path + "/data/interim/item_data.parquet"
-    if not exists(parquet_item_filename):
-        raw_item_filename = path + "/data/raw/item_data.jl.gz"
+    parquet_item_filename = os.path.join(path, "data/interim/item_data.parquet")
+    if not os.path.exists(parquet_item_filename):
+        raw_item_filename = os.path.join(path, "data/raw/item_data.jl.gz")
         convert_raw_to_parquet(raw_item_filename)
 
     process_item_dataset(parquet_item_filename, embedder, path, logger)
@@ -518,14 +518,14 @@ def main(args):
     #                                                         embedder, path)
 
     # DOMAIN ITEM DATA
-    parquet_domain_filename = path + "/data/interim/domain_data.parquet"
-    if not exists(parquet_domain_filename):
+    parquet_domain_filename = os.path.join(path, "data/interim/domain_data.parquet")
+    if not os.path.exists(parquet_domain_filename):
         generate_domain_data(parquet_item_filename, embedder, path, logger)
 
     # TEST DATA
-    parquet_test_filename = path + "/data/interim/test_dataset.parquet"
-    if not exists(parquet_test_filename):
-        raw_test_filename = path + "/data/raw/test_dataset.jl.gz"
+    parquet_test_filename = os.path.join(path, "data/interim/test_dataset.parquet")
+    if not os.path.exists(parquet_test_filename):
+        raw_test_filename = os.path.join(path, "data/raw/test_dataset.jl.gz")
         convert_raw_to_parquet(raw_test_filename)
 
     process_user_dataset(parquet_test_filename, embedder, logger,
@@ -535,9 +535,9 @@ def main(args):
                           parquet_domain_filename})
 
     # TRAIN DATA
-    parquet_train_filename = path + "/data/interim/train_dataset.parquet"
-    if not exists(parquet_train_filename):
-        raw_train_filename = path + "/data/raw/train_dataset.jl.gz"
+    parquet_train_filename = os.path.join(path, "data/interim/train_dataset.parquet")
+    if not os.path.exists(parquet_train_filename):
+        raw_train_filename = os.path.join(path, "data/raw/train_dataset.jl.gz")
         convert_raw_to_parquet(raw_train_filename)
 
     process_user_dataset(parquet_train_filename, embedder, logger,
