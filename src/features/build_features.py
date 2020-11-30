@@ -61,18 +61,22 @@ def preproc_user_history(s:str)->list:
     return res
 
 
-def get_most_viewed(hist:list, n:int=2)->tuple:
-    filtered_hist = filter(lambda x: x['event_type']=='view', hist)
-    item_list = list(reduce(lambda x, y:
-                            x + [y['event_info']],
-                            filtered_hist,
-                            []))
+def get_most_viewed(hist:list, item_domain_mapper:dict=None,
+                           n:int=2)->str:
+    viewed_list = list(reduce(lambda x, y:
+                              x + [y['event_info']]
+                              if y['event_type']=='view'
+                              else x,
+                              hist, []))
     try:
-        most_common = Counter(item_list).most_common(n)
-        res = [item for tup in most_common for item in tup]
-        while len(res) < 2*n:
-            res.extend([None, 0])
-        return res
+        if item_domain_mapper:
+            viewed_list = [item_domain_mapper[x]
+                           for x in viewed_list]
+        most_common = Counter(viewed_list).most_common(n)
+        most_common_flat = [item for tup in most_common for item in tup]
+        while len(most_common_flat) < 2*n:
+            most_common_flat.extend([None, 0])
+        return most_common_flat
     except IndexError as e:
         return (None, 0)
 
@@ -102,7 +106,8 @@ def get_most_searched_ngram(hist:list, n:int=2, m:int=2)->list:
     m: number of most common
     """
     searched_items = reduce(lambda x, y:
-                            x + [preproc_search(y['event_info'])] if y['event_type']=='search'
+                            x + [preproc_search(y['event_info'])]
+                            if y['event_type']=='search'
                             else x,
                             hist, [])
     searched_ngram = reduce(lambda x, y:
@@ -232,28 +237,47 @@ def process_user_dataset(filename:str,
     print("Feature\nMost viewed item...")
     # FEATURE
     # Most viewed item
-    n_most = 2
-    cols_feat_most_viewed = [c for n in range(1, n_most+1)
-                             for c in
-                             [f'most_viewed_{n}',
-                              f'most_viewed_count_{n}']]
-    df[cols_feat_most_viewed] = list(df['user_history'].swifter.apply(get_most_viewed))
+    n_most_item = 2
+    cols_feat_most_viewed_item = [c for n in range(1, n_most_item+1)
+                                  for c in
+                                  [f'most_viewed_item_{n}',
+                                   f'count_most_viewed_item_{n}']]
+    get_most_viewed_item = partial(get_most_viewed,
+                                    n=n_most_item)
+    df[cols_feat_most_viewed_item] = list(df['user_history']
+                                          .swifter.apply(get_most_viewed_item))
 
-    for i in range(1, n_most+1):
+    for i in range(1, n_most_item+1):
         # Join to get more information about the viewed item
-        df = join_item_info(df, df_item, f'most_viewed_{i}')
+        df = join_item_info(df, df_item, f'most_viewed_item_{i}')
 
         # Fills NaN with the last most viewed item
         if i > 1:
-          df[f'most_viewed_{i}'] = (df[f'most_viewed_{i}']
-                                    .fillna(df[f'most_viewed_{i-1}']))
+            df[f'most_viewed_item_{i}'] = (df[f'most_viewed_item_{i}']
+                                           .fillna(df[f'most_viewed_item_{i-1}']))
+
+    # FEATURE
+    # Most viewed domain
+    print("Feature\nMost viewed domain...")
+    n_most_domain = 2
+    cols_feat_most_viewed_domain = [c for n in range(1, n_most_domain+1)
+                                    for c in
+                                    [f'most_viewed_domain_{n}',
+                                     f'count_most_viewed_domain_{n}']]
+    item_domain_mapper = {x[0]: x[1]
+                          for x in df_item[['item_id','domain_id']].values}
+    get_most_viewed_domain = partial(get_most_viewed,
+                                      item_domain_mapper=item_domain_mapper,
+                                      n=n_most_domain)
+    df[cols_feat_most_viewed_domain] = list(df['user_history']
+                                            .swifter.apply(get_most_viewed_domain))
 
     print("Feature\nLast viewed item...")
     # FEATURE
     # Last viewed item
     n_last_viewed = 2
     get_last_viewed = partial(get_last, n=n_last_viewed, event_type="view")
-    cols_feat_last_viewed = [f'last_viewed_{i}' for i in range(1, n_last_viewed+1)]
+    cols_feat_last_viewed = [f'last_viewed_item_{i}' for i in range(1, n_last_viewed+1)]
     df[cols_feat_last_viewed] = list(df['user_history'].swifter.apply(get_last_viewed))
 
     for c in cols_feat_last_viewed:
@@ -321,17 +345,17 @@ def process_user_dataset(filename:str,
     print("Feature\nMost searched ngrams...")
     # FEATURE
     # Most searched ngrams
-    n_most = 2
-    cols_feat_most_searched = [c for n in range(1, n_most+1)
+    n_most_ngrams = 2
+    cols_feat_most_searched = [c for n in range(1, n_most_ngrams+1)
                                for c in
                                [f'most_searched_ngram_{n}',
-                                f'most_searched_ngram_count_{n}']]
+                                f'count_most_searched_ngram_{n}']]
     df[cols_feat_most_searched] = None
-    get_most_searched_ngram_ = partial(get_most_searched_ngram, m=n_most)
+    get_most_searched_ngram_ = partial(get_most_searched_ngram, m=n_most_ngrams)
     df.loc[idx_missing, cols_feat_most_searched] = list(df.loc[idx_missing,'user_history']
                                                         .swifter.apply(get_most_searched_ngram_))
 
-    cols_search = [f'most_searched_ngram_{n}' for n in range(1, n_most+1)]
+    cols_search = [f'most_searched_ngram_{n}' for n in range(1, n_most_ngrams+1)]
     for c in cols_search:
         df[f'{c}_embedding'] = None
         df.loc[idx_missing,f'{c}_embedding'] = [[x]
