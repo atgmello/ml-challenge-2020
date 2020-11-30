@@ -136,7 +136,7 @@ sphinxcontrib-htmlhelp==1.0.3
 sphinxcontrib-jsmath==1.0.1
 sphinxcontrib-qthelp==1.0.3
 sphinxcontrib-serializinghtml==1.1.4
--e git+https://github.com/atgmello/ml-challange-2020.git@589bbf8af79173c1de809cd875a6f5f9b946207a#egg=src
+-e git+https://github.com/atgmello/ml-challange-2020.git@8fc9e016ab409f322b71e2d2713ef763ce054ebf#egg=src
 srsly==1.0.4
 swifter==1.0.7
 tabulate==0.8.7
