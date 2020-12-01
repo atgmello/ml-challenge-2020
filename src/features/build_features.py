@@ -579,14 +579,14 @@ if __name__ == '__main__':
     """
     parser.add_argument("--environment", help=env_msg,
                         choices = ['local', 'colab'],
-                        default='colab')
+                        default='local')
 
     embedder_msg = """
     Pre-trained model to be used. Either 'bert' or 'roberta'
     """
     parser.add_argument("--embedder", help=embedder_msg,
                         choices = ['bert', 'roberta'],
-                        default = 'bert')
+                        default = 'roberta')
 
     args = parser.parse_args()
     main(args)
