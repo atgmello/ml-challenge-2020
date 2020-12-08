@@ -5,7 +5,7 @@
 #################################################################################
 
 PROJECT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-PROJECT_NAME = ml-challange-2020
+PROJECT_NAME = ml-challenge-2020
 PYTHON_INTERPRETER = python3
 
 ifeq (,$(shell which conda))
@@ -47,15 +47,19 @@ else
 endif
 		@echo ">>> New conda env created. Activate with:\nsource activate $(PROJECT_NAME)"
 else
-	$(PYTHON_INTERPRETER) -m pip install -q virtualenv virtualenvwrapper
-	@echo ">>> Installing virtualenvwrapper if not already installed.\nMake sure the following lines are in shell startup file\n\
-	export WORKON_HOME=$$HOME/.virtualenvs\nexport PROJECT_HOME=$$HOME/Devel\nsource /usr/local/bin/virtualenvwrapper.sh\n"
-	@bash -c "source `which virtualenvwrapper.sh`;mkvirtualenv $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER)"
-	@echo ">>> New virtualenv created. Activate with:\nworkon $(PROJECT_NAME)"
+	$(PYTHON_INTERPRETER) -m pip install -q virtualenv
+	@bash -c "virtualenv venv -p $(PYTHON_INTERPRETER)"
+	@echo ">>> New virtualenv created. Activate with:\nsource ./venv/bin/activate"
 endif
 
+activate_environment: create_environment
+	@bash -c "source ./venv/bin/activate"
+
+deactivate_environment: create_environment
+	@bash -c "deactivate"
+
 ## Test python environment is setup correctly
-test_environment:
+test_environment: activate_environment
 	$(PYTHON_INTERPRETER) test_environment.py
 
 #################################################################################
