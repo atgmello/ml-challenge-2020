@@ -535,11 +535,6 @@ def main(args):
         convert_raw_to_parquet(raw_item_filename)
 
     process_item_dataset(parquet_item_filename, embedder, path, logger)
-    # parquet_item_file = "../../data/interim/item_data.parquet"
-
-    # CLUSTERED ITEM DATA
-    # parquet_item_cluster_filename = process_cluster_dataset(parquet_item_filename,
-    #                                                         embedder, path)
 
     # DOMAIN ITEM DATA
     parquet_domain_filename = os.path.join(path, "data/interim/domain_data.parquet")
