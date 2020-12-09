@@ -191,6 +191,7 @@ def get_domain_id(item:int, df_item:pd.DataFrame)->str:
 
 
 def process_user_dataset(filename:str,
+                         output_filepath:str,
                          embedder, logger,
                          additional_filenames:dict)->str:
 
@@ -396,7 +397,10 @@ def process_user_dataset(filename:str,
         df['last_searched_cluster'] = df['last_searched'].swifter.apply(get_search_cluster_)
 
     # Saving results
-    processed_filename = (filename.replace('.parquet', '_features.parquet'))
+    processed_filename = os.path.join(output_filepath,
+                                      (filename.split('/')[-1]
+                                       .replace('.parquet',
+                                                '_features.parquet')))
 
     print(time.time() - start)
     df.drop(columns=['user_history']).to_parquet(processed_filename)
@@ -430,7 +434,7 @@ def process_cluster_dataset(item_file:str, embedder, path:str)->str:
                      embedding_mapper.get(corpus[sentence_idx]))
                       for (sentence_idx, cluster) in enumerate(cluster_assignment)]
 
-    clusters_file_parquet = os.path.join(path, "data/interim/item_domain_clusters_data.parquet")
+    clusters_file_parquet = os.path.join(path, "item_domain_clusters_data.parquet")
     df_clusters = pd.DataFrame(cluster_list,
                                columns=['domain_id_preproc',
                                         'cluster', 'embedding_domain'])
@@ -450,8 +454,7 @@ def process_cluster_dataset(item_file:str, embedder, path:str)->str:
 
 
 def process_item_dataset(filename:str,
-                         embedder:SentenceTransformer,
-                         path:str,
+                         output_filepath:str,
                          logger)->str:
     df_item = pd.read_parquet(filename)
 
@@ -460,7 +463,7 @@ def process_item_dataset(filename:str,
                      enumerate(sorted(df_item['domain_id'].dropna().unique()))}
     df_item['domain_code'] = df_item['domain_id'].map(domain_mapper)
 
-    item_file_parquet = os.path.join(path, "data/interim/item_data.parquet")
+    item_file_parquet = os.path.join(output_filepath, "item_data.parquet")
     df_item.to_parquet(item_file_parquet)
 
     return item_file_parquet
@@ -477,7 +480,7 @@ def join_domain_title(row:list)->str:
 
 def generate_domain_data(filename:str,
                          embedder:SentenceTransformer,
-                         path:str,
+                         output_filepath:str,
                          logger)->str:
     df_item = pd.read_parquet(filename)
 
@@ -504,62 +507,63 @@ def generate_domain_data(filename:str,
     df_domain['embedding_title'] = list(embedder.encode(list(df_domain['title'])))
     df_domain['domain_code'] = list(range(len(df_domain)))
 
-    domain_file_parquet = os.path.join(path, "data/interim/domain_data.parquet")
+    domain_file_parquet = os.path.join(output_filepath, "domain_data.parquet")
     df_domain.to_parquet(domain_file_parquet)
 
     return domain_file_parquet
 
 
-def main(args):
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logger = None
-
+def enhance_datasets(input_filepath:str,
+                     output_filepath:str,
+                     logger=None,
+                     embedder_name:str='roberta'):
     nltk.download('stopwords')
     nltk.download('punkt')
 
-    if args.embedder=='bert':
+    intermediate_filepath = input_filepath.replace('raw', 'interim')
+
+    if embedder_name=='bert':
         embedder = SentenceTransformer('distilbert-multilingual-nli-stsb-quora-ranking')
     else:
         embedder = SentenceTransformer('xlm-r-distilroberta-base-paraphrase-v1')
 
-    if args.environment=='colab':
-        path = './drive/MyDrive/ml-data-challange-2020/'
-    else:
-        path = '../../'
-
     # ITEM DATA
     # Load item_data
-    parquet_item_filename = os.path.join(path, "data/interim/item_data.parquet")
+    parquet_item_filename = os.path.join(intermediate_filepath, "item_data.parquet")
     if not os.path.exists(parquet_item_filename):
-        raw_item_filename = os.path.join(path, "data/raw/item_data.jl.gz")
+        raw_item_filename = os.path.join(input_filepath, "item_data.jl.gz")
         convert_raw_to_parquet(raw_item_filename)
 
-    process_item_dataset(parquet_item_filename, embedder, path, logger)
+    process_item_dataset(parquet_item_filename, output_filepath, logger)
 
     # DOMAIN ITEM DATA
-    parquet_domain_filename = os.path.join(path, "data/interim/domain_data.parquet")
+    parquet_domain_filename = os.path.join(output_filepath, "domain_data.parquet")
     if not os.path.exists(parquet_domain_filename):
-        generate_domain_data(parquet_item_filename, embedder, path, logger)
+        generate_domain_data(parquet_item_filename, embedder, output_filepath, logger)
 
     # TEST DATA
-    parquet_test_filename = os.path.join(path, "data/interim/test_dataset.parquet")
+    parquet_test_filename = os.path.join(intermediate_filepath, "test_dataset.parquet")
     if not os.path.exists(parquet_test_filename):
-        raw_test_filename = os.path.join(path, "data/raw/test_dataset.jl.gz")
+        raw_test_filename = os.path.join(input_filepath, "test_dataset.jl.gz")
         convert_raw_to_parquet(raw_test_filename)
 
-    process_user_dataset(parquet_test_filename, embedder, logger,
+    process_user_dataset(parquet_test_filename,
+                         output_filepath,
+                         embedder, logger,
                          {"parquet_item_filename":
                           parquet_item_filename,
                           "parquet_domain_filename":
                           parquet_domain_filename})
 
     # TRAIN DATA
-    parquet_train_filename = os.path.join(path, "data/interim/train_dataset.parquet")
+    parquet_train_filename = os.path.join(intermediate_filepath, "train_dataset.parquet")
     if not os.path.exists(parquet_train_filename):
-        raw_train_filename = os.path.join(path, "data/raw/train_dataset.jl.gz")
+        raw_train_filename = os.path.join(input_filepath, "train_dataset.jl.gz")
         convert_raw_to_parquet(raw_train_filename)
 
-    process_user_dataset(parquet_train_filename, embedder, logger,
+    process_user_dataset(parquet_train_filename,
+                         output_filepath,
+                         embedder, logger,
                          {"parquet_item_filename":
                           parquet_item_filename,
                           "parquet_domain_filename":
@@ -584,4 +588,18 @@ if __name__ == '__main__':
                         default = 'roberta')
 
     args = parser.parse_args()
-    main(args)
+
+    if args.environment=='colab':
+        input_filepath = './drive/MyDrive/ml-data-challange-2020/data/raw'
+    else:
+        input_filepath = './data/raw'
+
+    output_filepath = input_filepath.replace('raw', 'processed')
+
+    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logging.basicConfig(level=logging.INFO, format=log_fmt)
+    logger = logging.getLogger(__name__)
+    logger.info('Making final data set from raw data')
+
+    enhance_datasets(input_filepath, output_filepath,
+                     logger, args.embedder)

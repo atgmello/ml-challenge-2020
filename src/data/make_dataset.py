@@ -3,6 +3,7 @@ import click
 import logging
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
+from src.features import enhance_datasets
 
 
 @click.command()
@@ -13,7 +14,8 @@ def main(input_filepath, output_filepath):
         cleaned data ready to be analyzed (saved in ../processed).
     """
     logger = logging.getLogger(__name__)
-    logger.info('making final data set from raw data')
+    logger.info('Making final data set from raw data')
+    enhance_datasets(input_filepath, output_filepath, logger)
 
 
 if __name__ == '__main__':
