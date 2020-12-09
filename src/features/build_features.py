@@ -214,9 +214,9 @@ def process_user_dataset(filename:str,
     else:
         df_domain = None
 
-    print("Reading data...")
+    if logger: logger.info("Reading data...")
     df = pd.read_parquet(filename)
-    print("Preprocessing user_history...")
+    if logger: logger.info("Preprocessing user_history...")
     df['user_history'] = df['user_history'].swifter.apply(preproc_user_history)
     df = df.rename_axis('user_id').reset_index()
 
@@ -226,7 +226,7 @@ def process_user_dataset(filename:str,
     # Get the domain_id for the bought_item
     # It can be used as a new target
     if 'item_bought' in df.columns:
-        print("Feature\nBought item domain_id...")
+        if logger: logger.info("Feature\nBought item domain_id...")
         df = (df.set_index('item_bought')
               .join(df_item[['item_id','domain_id']]
                     .set_index('item_id'),
@@ -235,7 +235,7 @@ def process_user_dataset(filename:str,
               .reset_index()
               .rename(columns={'domain_id': 'domain_id_item_bought'}))
 
-    print("Feature\nMost viewed item...")
+    if logger: logger.info("Feature\nMost viewed item...")
     # FEATURE
     # Most viewed item
     n_most_item = 2
@@ -259,7 +259,7 @@ def process_user_dataset(filename:str,
 
     # FEATURE
     # Most viewed domain
-    print("Feature\nMost viewed domain...")
+    if logger: logger.info("Feature\nMost viewed domain...")
     n_most_domain = 2
     cols_feat_most_viewed_domain = [c for n in range(1, n_most_domain+1)
                                     for c in
@@ -273,7 +273,7 @@ def process_user_dataset(filename:str,
     df[cols_feat_most_viewed_domain] = list(df['user_history']
                                             .swifter.apply(get_most_viewed_domain))
 
-    print("Feature\nLast viewed item...")
+    if logger: logger.info("Feature\nLast viewed item...")
     # FEATURE
     # Last viewed item
     n_last_viewed = 2
@@ -284,7 +284,7 @@ def process_user_dataset(filename:str,
     for c in cols_feat_last_viewed:
         df = join_item_info(df, df_item, c)
 
-    print("Feature\nLast searched item...")
+    if logger: logger.info("Feature\nLast searched item...")
     # FEATURE
     # Last searched item
     n_last_searched = 2
@@ -313,13 +313,13 @@ def process_user_dataset(filename:str,
         df.loc[idx_missing, c] = [[x] for x in
                                   embeddings[i::len(cols_feat_last_searched_emb)]]
 
-    print("Feature\nLast searched item domain...")
+    if logger: logger.info("Feature\nLast searched item domain...")
     # FEATURE
     # Last searched item domain
-    print("Building index...")
+    if logger: logger.info("Building index...")
     data = np.array([np.array(x) for x in df_domain['embedding_title'].values])
     index = NNDescent(data, metric='cosine')
-    print("Querying data...")
+    if logger: logger.info("Querying data...")
     query_data = np.array([np.array(x[0])
                            for x in
                            (df.loc[idx_missing,
@@ -343,7 +343,7 @@ def process_user_dataset(filename:str,
                                                                   (sum(idx_missing),
                                                                    len(cols_feat_last_searched_domain)))
 
-    print("Feature\nMost searched ngrams...")
+    if logger: logger.info("Feature\nMost searched ngrams...")
     # FEATURE
     # Most searched ngrams
     n_most_ngrams = 2
@@ -364,7 +364,7 @@ def process_user_dataset(filename:str,
                                                 (embedder.
                                                  encode(list(df.loc[idx_missing,c])))]
 
-    print("Feature\nMost searched ngrams domains...")
+    if logger: logger.info("Feature\nMost searched ngrams domains...")
     # FEATURE
     # Most searched ngrams domain
     for c in cols_search:
@@ -402,7 +402,8 @@ def process_user_dataset(filename:str,
                                        .replace('.parquet',
                                                 '_features.parquet')))
 
-    print(time.time() - start)
+    if logger: logger.info(f"Elapsed time: {time.time() - start}")
+    if logger: logger.info("Saving file...")
     df.drop(columns=['user_history']).to_parquet(processed_filename)
 
     return processed_filename
@@ -455,14 +456,16 @@ def process_cluster_dataset(item_file:str, embedder, path:str)->str:
 
 def process_item_dataset(filename:str,
                          output_filepath:str,
-                         logger)->str:
+                         logger=None)->str:
     df_item = pd.read_parquet(filename)
 
+    if logger: logger.info("Generating domain codes...")
     domain_mapper = {x[1]: x[0]
                      for x in
                      enumerate(sorted(df_item['domain_id'].dropna().unique()))}
     df_item['domain_code'] = df_item['domain_id'].map(domain_mapper)
 
+    if logger: logger.info("Saving file...")
     item_file_parquet = os.path.join(output_filepath, "item_data.parquet")
     df_item.to_parquet(item_file_parquet)
 
@@ -481,14 +484,16 @@ def join_domain_title(row:list)->str:
 def generate_domain_data(filename:str,
                          embedder:SentenceTransformer,
                          output_filepath:str,
-                         logger)->str:
+                         logger=None)->str:
     df_item = pd.read_parquet(filename)
 
+    if logger: logger.info("Building stopword list...")
     custom_stopwords = ['kit', '', '+', '-', 'und', 'unidade', 'unidad']
     stopwords = (nltk.corpus.stopwords.words('portuguese')
                  + nltk.corpus.stopwords.words('spanish')
                  + custom_stopwords)
 
+    if logger: logger.info("Generating title aggregation...")
     generate_top_title_ = partial(generate_top_title,
                                   stopwords=stopwords)
     df_domain = pd.DataFrame(df_item[['domain_id', 'title']]
@@ -504,9 +509,13 @@ def generate_domain_data(filename:str,
                           .apply(join_domain_title, axis=1)
                           .values)
 
+    if logger: logger.info("Embedding aggregated titles...")
     df_domain['embedding_title'] = list(embedder.encode(list(df_domain['title'])))
+
+    if logger: logger.info("Generating domain codes...")
     df_domain['domain_code'] = list(range(len(df_domain)))
 
+    if logger: logger.info("Saving file...")
     domain_file_parquet = os.path.join(output_filepath, "domain_data.parquet")
     df_domain.to_parquet(domain_file_parquet)
 
@@ -531,22 +540,27 @@ def enhance_datasets(input_filepath:str,
     # Load item_data
     parquet_item_filename = os.path.join(intermediate_filepath, "item_data.parquet")
     if not os.path.exists(parquet_item_filename):
+        if logger: logger.info("Generating intermediate item_data...")
         raw_item_filename = os.path.join(input_filepath, "item_data.jl.gz")
         convert_raw_to_parquet(raw_item_filename)
 
+    if logger: logger.info("Enhancing item_data...")
     process_item_dataset(parquet_item_filename, output_filepath, logger)
 
     # DOMAIN ITEM DATA
     parquet_domain_filename = os.path.join(output_filepath, "domain_data.parquet")
     if not os.path.exists(parquet_domain_filename):
+        if logger: logger.info("Generating domain_data...")
         generate_domain_data(parquet_item_filename, embedder, output_filepath, logger)
 
     # TEST DATA
     parquet_test_filename = os.path.join(intermediate_filepath, "test_dataset.parquet")
     if not os.path.exists(parquet_test_filename):
+        if logger: logger.info("Generating intermediate test_dataset...")
         raw_test_filename = os.path.join(input_filepath, "test_dataset.jl.gz")
         convert_raw_to_parquet(raw_test_filename)
 
+    if logger: logger.info("Enhancing test_dataset...")
     process_user_dataset(parquet_test_filename,
                          output_filepath,
                          embedder, logger,
@@ -558,9 +572,11 @@ def enhance_datasets(input_filepath:str,
     # TRAIN DATA
     parquet_train_filename = os.path.join(intermediate_filepath, "train_dataset.parquet")
     if not os.path.exists(parquet_train_filename):
+        if logger: logger.info("Generating intermediate train_dataset...")
         raw_train_filename = os.path.join(input_filepath, "train_dataset.jl.gz")
         convert_raw_to_parquet(raw_train_filename)
 
+    if logger: logger.info("Enhancing train_dataset...")
     process_user_dataset(parquet_train_filename,
                          output_filepath,
                          embedder, logger,
@@ -568,6 +584,8 @@ def enhance_datasets(input_filepath:str,
                           parquet_item_filename,
                           "parquet_domain_filename":
                           parquet_domain_filename})
+
+    if logger: logger.info("All done!")
 
 
 if __name__ == '__main__':
