@@ -224,7 +224,7 @@ def process_user_dataset(filename:str,
 
     start = time.time()
 
-    if logger: logger.info("Feature\nMost viewed item...")
+    if logger: logger.info("Feature: Most viewed item...")
     # FEATURE
     # Most viewed item
     n_most_item = 2
@@ -248,7 +248,7 @@ def process_user_dataset(filename:str,
 
     # FEATURE
     # Most viewed domain
-    if logger: logger.info("Feature\nMost viewed domain...")
+    if logger: logger.info("Feature: Most viewed domain...")
     n_most_domain = 2
     cols_feat_most_viewed_domain = [c for n in range(1, n_most_domain+1)
                                     for c in
@@ -262,7 +262,7 @@ def process_user_dataset(filename:str,
     df[cols_feat_most_viewed_domain] = list(df['user_history']
                                             .swifter.apply(get_most_viewed_domain))
 
-    if logger: logger.info("Feature\nLast viewed item...")
+    if logger: logger.info("Feature: Last viewed item...")
     # FEATURE
     # Last viewed item
     n_last_viewed = 2
@@ -273,7 +273,7 @@ def process_user_dataset(filename:str,
     for c in cols_feat_last_viewed:
         df = join_item_info(df, df_item, c)
 
-    if logger: logger.info("Feature\nLast searched item...")
+    if logger: logger.info("Feature: Last searched item...")
     # FEATURE
     # Last searched item
     n_last_searched = 2
@@ -302,7 +302,7 @@ def process_user_dataset(filename:str,
         df.loc[idx_missing, c] = [[x] for x in
                                   embeddings[i::len(cols_feat_last_searched_emb)]]
 
-    if logger: logger.info("Feature\nLast searched item domain...")
+    if logger: logger.info("Feature: Last searched item domain...")
     # FEATURE
     # Last searched item domain
     if logger: logger.info("Building index...")
@@ -332,7 +332,7 @@ def process_user_dataset(filename:str,
                                                                   (sum(idx_missing),
                                                                    len(cols_feat_last_searched_domain)))
 
-    if logger: logger.info("Feature\nMost searched ngrams...")
+    if logger: logger.info("Feature: Most searched ngrams...")
     # FEATURE
     # Most searched ngrams
     n_most_ngrams = 2
@@ -353,7 +353,7 @@ def process_user_dataset(filename:str,
                                                 (embedder.
                                                  encode(list(df.loc[idx_missing,c])))]
 
-    if logger: logger.info("Feature\nMost searched ngrams domains...")
+    if logger: logger.info("Feature: Most searched ngrams domains...")
     # FEATURE
     # Most searched ngrams domain
     for c in cols_search:
@@ -625,7 +625,6 @@ def enhance_datasets(input_filepath:str,
         embedder = SentenceTransformer('xlm-r-distilroberta-base-paraphrase-v1')
 
     # ITEM DATA
-    # Load item_data
     parquet_item_filename = os.path.join(intermediate_filepath, "item_data.parquet")
     if not os.path.exists(parquet_item_filename):
         if logger: logger.info("Generating intermediate item_data...")
