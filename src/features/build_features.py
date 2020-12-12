@@ -3,20 +3,22 @@ import pandas as pd
 import numpy as np
 import swifter
 import logging
+import joblib
 import time
 import json
 import nltk
 import re
 import os
 
-from functools import reduce
 from itertools import islice, cycle
-from functools import partial
-from collections import Counter
 from pynndescent import NNDescent
+from collections import Counter
+from functools import partial
+from functools import reduce
 
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.cluster import AgglomerativeClustering
 
 
@@ -222,19 +224,6 @@ def process_user_dataset(filename:str,
 
     start = time.time()
 
-    # FEATURE
-    # Get the domain_id for the bought_item
-    # It can be used as a new target
-    if 'item_bought' in df.columns:
-        if logger: logger.info("Feature\nBought item domain_id...")
-        df = (df.set_index('item_bought')
-              .join(df_item[['item_id','domain_id']]
-                    .set_index('item_id'),
-                    how='left')
-              .rename_axis('item_bought')
-              .reset_index()
-              .rename(columns={'domain_id': 'domain_id_item_bought'}))
-
     if logger: logger.info("Feature\nMost viewed item...")
     # FEATURE
     # Most viewed item
@@ -395,6 +384,105 @@ def process_user_dataset(filename:str,
                                       domain_clusters=domain_clusters,
                                       embedder=embedder)
         df['last_searched_cluster'] = df['last_searched'].swifter.apply(get_search_cluster_)
+
+
+    if 'item_bought' in df.columns:
+        # FEATURE
+        # Get the domain_id for the bought_item
+        # It will be used as a target feature below
+        if logger: logger.info("Feature: Bought item domain_id...")
+        df = (df.set_index('item_bought')
+              .join(df_item[['item_id','domain_id']]
+                    .set_index('item_id'),
+                    how='left')
+              .rename_axis('item_bought')
+              .reset_index()
+              .rename(columns={'domain_id': 'domain_id_item_bought'}))
+
+        if logger: logger.info("Preparing data for Random Forest model...")
+        # FEATURE
+        # Train Random Forest for most probable domain generation
+
+        # We'll train this model using data only from the top 60% most
+        # bought domains, since there's a huge class imbalance between
+        # the most bought and the least ones
+        df_most_bought = (df[['domain_id_item_bought','item_bought']]
+                          .reset_index()
+                          .groupby(by=['domain_id_item_bought','item_bought'])
+                          .count()
+                          .sort_values(by=['domain_id_item_bought','index'], ascending=False))
+
+        domains_most_bought_filter = ((df
+                                       [['domain_id_item_bought','item_bought']]
+                                       .groupby(by='domain_id_item_bought')
+                                       .count()
+                                       .sort_values(by='item_bought', ascending=False)
+                                       .cumsum()/len(df))
+                                      .query('item_bought < 0.6')).index
+
+        df_train = (df
+                    [df['domain_id_item_bought']
+                     .isin(domains_most_bought_filter)]
+                    .reset_index(drop=True)
+                    .fillna(-1))
+
+        domain_mapper = {key: int(value)
+                         for (key, value)
+                         in (df_item
+                             [['domain_id','domain_code']]
+                             .dropna(how='all')
+                             .values)}
+
+        cols_feat_domain = [c for c in df.columns if 'domain_id' in c]
+        for c in cols_feat_domain:
+            df_train[f'encoded_{c}'] = df_train[c].map(domain_mapper).fillna(-1)
+
+        cols_feat_domain_encoded = [f'encoded_{c}'
+                                    for c in cols_feat_domain
+                                    if c != 'domain_id_item_bought']
+
+        X_train, y_train = (df_train[cols_feat_domain_encoded].astype('int32'),
+                            df_train['encoded_domain_id_item_bought'].astype('int32'))
+
+        if logger: logger.info("Training model...")
+        clf = RandomForestClassifier(max_depth=12,
+                                     n_estimators=200,
+                                     n_jobs=-1,
+                                     class_weight='balanced',
+                                     random_state=0)
+        clf.fit(X_train, y_train)
+
+        if logger: logger.info("Saving model...")
+        joblib.dump(clf, './models/random_forest.joblib')
+
+    else:
+        if logger: logger.info("Feature: Random forest estimated domains...")
+        # FEATURE
+        # Forrest generated domain
+        if logger: logger.info("Preparing data for Random Forest model...")
+
+        domain_mapper = {key: int(value)
+                         for (key, value)
+                         in (df_item
+                             [['domain_id','domain_code']]
+                             .dropna(how='all')
+                             .values)}
+        domain_mapper_reverse = {value: key
+                                 for (key,value) in domain_mapper.items()}
+
+        df_test = pd.DataFrame()
+        cols_feat_domain = [c for c in df.columns if 'domain_id' in c]
+        for c in cols_feat_domain:
+            df_test[f'encoded_{c}'] = df[c].map(domain_mapper).fillna(-1)
+
+        if logger: logger.info("Loading model...")
+        clf = joblib.load('./models/random_forest.joblib')
+
+        if logger: logger.info("Predicting...")
+        X_test = df_test.astype('int32')
+        y_pred = clf.predict(X_test)
+        df['domain_id_forest'] = [domain_mapper_reverse[y]
+                                  for y in y_pred]
 
     # Saving results
     processed_filename = os.path.join(output_filepath,
