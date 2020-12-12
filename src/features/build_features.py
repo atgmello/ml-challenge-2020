@@ -553,22 +553,6 @@ def enhance_datasets(input_filepath:str,
         if logger: logger.info("Generating domain_data...")
         generate_domain_data(parquet_item_filename, embedder, output_filepath, logger)
 
-    # TEST DATA
-    parquet_test_filename = os.path.join(intermediate_filepath, "test_dataset.parquet")
-    if not os.path.exists(parquet_test_filename):
-        if logger: logger.info("Generating intermediate test_dataset...")
-        raw_test_filename = os.path.join(input_filepath, "test_dataset.jl.gz")
-        convert_raw_to_parquet(raw_test_filename)
-
-    if logger: logger.info("Enhancing test_dataset...")
-    process_user_dataset(parquet_test_filename,
-                         output_filepath,
-                         embedder, logger,
-                         {"parquet_item_filename":
-                          parquet_item_filename,
-                          "parquet_domain_filename":
-                          parquet_domain_filename})
-
     # TRAIN DATA
     parquet_train_filename = os.path.join(intermediate_filepath, "train_dataset.parquet")
     if not os.path.exists(parquet_train_filename):
@@ -578,6 +562,22 @@ def enhance_datasets(input_filepath:str,
 
     if logger: logger.info("Enhancing train_dataset...")
     process_user_dataset(parquet_train_filename,
+                         output_filepath,
+                         embedder, logger,
+                         {"parquet_item_filename":
+                          parquet_item_filename,
+                          "parquet_domain_filename":
+                          parquet_domain_filename})
+
+    # TEST DATA
+    parquet_test_filename = os.path.join(intermediate_filepath, "test_dataset.parquet")
+    if not os.path.exists(parquet_test_filename):
+        if logger: logger.info("Generating intermediate test_dataset...")
+        raw_test_filename = os.path.join(input_filepath, "test_dataset.jl.gz")
+        convert_raw_to_parquet(raw_test_filename)
+
+    if logger: logger.info("Enhancing test_dataset...")
+    process_user_dataset(parquet_test_filename,
                          output_filepath,
                          embedder, logger,
                          {"parquet_item_filename":
