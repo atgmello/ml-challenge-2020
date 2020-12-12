@@ -15,9 +15,9 @@ from functools import partial
 from collections import Counter
 from pynndescent import NNDescent
 
-from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+from sklearn.cluster import AgglomerativeClustering
 
 
 def take(n, iterable):
