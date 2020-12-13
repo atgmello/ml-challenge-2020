@@ -29,6 +29,15 @@ data: requirements
 	mkdir -p ./data/processed
 	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed
 
+## Make Predictions
+datasets = ./data/processed/domain_data.parquet \
+			./data/processed/item_data.parquet \
+			./data/processed/test_dataset_features.parquet \
+			./data/processed/train_dataset_features.parquet
+
+predict: $(datasets) activate_environment
+	$(PYTHON_INTERPRETER) src/models/predict_model.py data/processed models
+
 ## Delete all compiled Python files
 clean:
 	find . -type f -name "*.py[co]" -delete
