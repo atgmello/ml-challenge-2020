@@ -3,7 +3,7 @@ import click
 import logging
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
-from src.features import enhance_datasets
+from src.features.build_features import enhance_datasets
 
 
 @click.command()
