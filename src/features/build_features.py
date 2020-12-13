@@ -199,7 +199,7 @@ def process_user_dataset(filename:str,
 
     if additional_filenames.get("parquet_item_filename"):
         item_filename = additional_filenames.get("parquet_item_filename")
-        item_usecols = ['item_id', 'price', 'condition', 'domain_id']
+        item_usecols = ['item_id', 'price', 'condition', 'domain_id', 'domain_code']
         df_item = pd.read_parquet(item_filename, columns=item_usecols)
     else:
         raise ValueError("parquet_item_filename is expected in additional_filenames")
@@ -631,8 +631,10 @@ def enhance_datasets(input_filepath:str,
         raw_item_filename = os.path.join(input_filepath, "item_data.jl.gz")
         convert_raw_to_parquet(raw_item_filename)
 
-    if logger: logger.info("Enhancing item_data...")
-    process_item_dataset(parquet_item_filename, output_filepath, logger)
+    parquet_item_filename_enhanced = os.path.join(output_filepath, "item_data.parquet")
+    if not os.path.exists(parquet_item_filename_enhanced):
+        if logger: logger.info("Enhancing item_data...")
+        process_item_dataset(parquet_item_filename, output_filepath, logger)
 
     # DOMAIN ITEM DATA
     parquet_domain_filename = os.path.join(output_filepath, "domain_data.parquet")
@@ -652,7 +654,7 @@ def enhance_datasets(input_filepath:str,
                          output_filepath,
                          embedder, logger,
                          {"parquet_item_filename":
-                          parquet_item_filename,
+                          parquet_item_filename_enhanced,
                           "parquet_domain_filename":
                           parquet_domain_filename})
 
@@ -668,7 +670,7 @@ def enhance_datasets(input_filepath:str,
                          output_filepath,
                          embedder, logger,
                          {"parquet_item_filename":
-                          parquet_item_filename,
+                          parquet_item_filename_enhanced,
                           "parquet_domain_filename":
                           parquet_domain_filename})
 
