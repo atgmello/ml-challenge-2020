@@ -1,4 +1,4 @@
-ml-challange-2020
+MercadoLibre Data Challenge 2020
 ==============================
 
 This is a repository with my solution to MercadoLibre's 2020 
@@ -108,8 +108,8 @@ Usage
 
 I wanted to make sure this project would be reasonably reproducible. That's why
 I went with the
-[https://drivendata.github.io/cookiecutter-data-science/](Cookiecutter Data
-Science) project structure.
+[Cookiecutter Data Science](https://drivendata.github.io/cookiecutter-data-science)
+project structure.
 
 Once inside the project's root folder, all you have to do to reproduce my
 results is
