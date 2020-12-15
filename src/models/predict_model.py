@@ -226,7 +226,7 @@ def make_prediction(input_filepath:str,
     df_test = df_test.set_index('user_id').sort_index()
 
     logger.info("Predicting with '%s' heuristic...", prediction_policy)
-    y_pred = df_test.apply(predict_, axis=1).values
+    y_pred = df_test.swifter.apply(predict_, axis=1).values
     df_y_pred = pd.DataFrame(list(y_pred))
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     submission_filename = f'{prediction_policy}_{now}.csv'
