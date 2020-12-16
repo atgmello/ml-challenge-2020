@@ -28,14 +28,15 @@ tried my best to keep them as organized and as informative as possible.
 
 ## Feature engineering
 
-The original datasets are essentially compressed jasonlines.
+The original datasets are essentially compressed jsonlines.
 Each row is structure is as follows:
 
 ![Raw dataset](./reports/figures/data_json_example.png "Raw dataset")
 
-So in order to properly work with this data the first step I took was
-to extract the most relevant information available from each user history
-and work with it using [pandas](https://github.com/pandas-dev/pandas).
+In order to properly work with this data, the first step would be to
+extract the most relevant information available from each user history.
+That way it can be further enhanced using it using
+[pandas](https://github.com/pandas-dev/pandas).
 
 The main features extracted from each `user_history` list were
 - The two most and the two last viewed items
@@ -45,28 +46,31 @@ Getting the last/most viewed items is relatively straightforward.
 
 Dealing with the "searched terms" portion of the dataset, on the other hand, was
 a bit more work. I relied on some string manipulation and common preprocessing
-techniques from NLP with the help of [nltk](https://github.com/nltk/nltk), such
+NLP techniques with the help of [nltk](https://github.com/nltk/nltk), such
 as tokenization and stopword removal.
 
-Next, I decided to focus on recovering the domains for each viewed item and
-searched term.
+Next, I decided focusing on recovering the domains for each viewed item and
+searched term. Each item belongs to at most one domain, such as
+`MLB_CELLPHONES`.
+
 A simple join to the items dataset was enough to get the domain each most/last
 viewed item belonged to. 
 The hard part was coming up with a way to find out the domain related to the
 search terms.
 This is certainly the most costly part of my approach.
 
-First, each domain gets a "master title", built from the most common words
-found in the item titles from each respective domain. Then, I make a vector out
-of these "master titles" using a distilled RoBERTa multilingual pretrained model
-from [UKPLab's
+First, a "master title" for each domain is built. This feature is comprised by
+the ten most common words found in the item titles from each respective domain.
+Then, I generate a vector out of these "master titles" using a distilled RoBERTa
+multilingual pretrained model from [UKPLab's
 sentence-transformers](https://github.com/UKPLab/sentence-transformers).
 
-Next, I transform the most/last searched terms/bi-grams using this same
+Then, I transform the most/last searched terms/bi-grams using this same
 embedder. Finally, I can determine which domain each term is closest to using
-[PyNNDescent](https://github.com/lmcinnes/pynndescent) with the cosine metric.
+[PyNNDescent](https://github.com/lmcinnes/pynndescent) (a blazingly fast Nearest
+Neighbour Descent algorithm) with the cosine metric.
 
-After gathering the domain from all these different key items/searches, they are
+After gathering the domain from all these different key fields, they are
 used as features to estimate the bought item's domain. I use [sklearn's Random
 Forest
 classifier](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html)
@@ -78,21 +82,23 @@ After some experimentation, the best approach to decide which is the one domain
 most likely to be the bought item's domain for each `user_history` is to employ
 a simple voting rule.
 
-Say we have the following scenario for a given `user_history`: 
+Say we have the following (simplified) scenario for a given `user_history`: 
 - the last viewed item's domain is `MLB_CELLPHONES`
 - the most viewed item's domain is `MLM_NOTEBOOKS`
 - the last searched term's domain is `MLM_GRAPHICS-CARD`
-- the the Random Forest predicted domain is `MLB_CELLPHONES`.
+- the Random Forest predicted domain is `MLB_CELLPHONES`.
 
-In this case, we pick `MLB_CELLPHONES` as this user's "final" domain.
+In this case, we pick `MLB_CELLPHONES` as this user's predicted domain.
 
-And wrapping things off, the recommendations.
+Finally, to wrap things off, the recommendations.
 
-An heuristic similar to the ones proposed during the [challenge's workshop](https://ml-challenge.mercadolibre.com/workshop) is used.
+A heuristic similar to the ones proposed during the [challenge's workshop](https://ml-challenge.mercadolibre.com/workshop) is used.
 The 10 items recommendation list for a given user is filled with the item ids
 from their last and most viewed items (which amount to 4) and the next 6
-available slots are filled with the most bought items from the user's "final"
-domain. Still using the example above, that user would receive as part of their
+available slots are filled with the most bought items from the user's predicted
+domain.
+
+Going back to the example above, that user would receive as part of their
 recommendation list the top 6 most bought cellphones.
 
 Results
@@ -125,9 +131,14 @@ These commands take care of:
 - generating the predictions for the given test dataset
 
 Most of the heavy lifting is carried out during the feature engineering phase.
-This part should take the longest. The prediction is based on fairly lightweight
-heuristics and should be finished in no time once all the features are
-available.
+This part is expected to take the longest. The prediction is based on fairly
+lightweight heuristics and should be finished in no time once all the features
+are available.
+
+Logging is used throughout the code so you can keep an eye for how long each
+step is going to take.
+
+![Logging](./reports/figures/logging.png "Logging")
 
 Environment
 ------------
